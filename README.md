@@ -1,14 +1,14 @@
 # Automatic zone placement service
 
-In Kubernetes, it is not possible to schedule Pods for optimal network performance, when the Pod is using resources outside of the cluster.
+In Kubernetes, it is not possible to schedule Pods for optimal network performance when Pods use resources outside of the cluster.
 
-I've made a solution to overcome this. It will ensure that your SQL client Pods are scheduled to the same AWS availabilty zone that your AWS RDS Writer instance are in, by enabling the scheduling components in Kubernetes to be aware of the network topology outside of the cluste. It works for any external resource as long as it resolved
+I've made a solution to overcome this. It will ensure that your SQL client Pods are scheduled to the same AWS availability zone that your AWS RDS Writer instance is in, by enabling the scheduling components in Kubernetes to be aware of the network topology outside of the cluster. It works for any external resource as long as its FQDN resolves to an IP in a known subnet.
 
-Does it matter? Yes, a simple `pgbench` benchmark demonstrates a ~175% to ~375% improvement in TPS. Any workload that is latency sensitive can benefit from this,
+Does it matter? Yes, a simple `pgbench` benchmark demonstrates a ~175% to ~375% improvement in TPS. Any workload that is latency-sensitive can benefit from this.
 
-This is _not_ a fix for placing related workloads running in the same cluster, relative near each other. That is a fixed problem in Kubernetes with affinity rules and smart use of label selectors.
+This is _not_ a fix for placing related workloads running in the same cluster relatively near each other. That is a problem already solved in Kubernetes with affinity rules and smart use of label selectors.
 
-The basic problem is that the scheduler in Kubernetes is unaware of the network topology it is running on, so node assigment for Pods becomes random. For instance, assume your RDS Writer Instance is running in AZ C, kubernetes is not able to determine that it should (ideeally) schedule your SQL client Pod in AZ C:
+The basic problem is that the scheduler in Kubernetes is unaware of the network topology it is running on, so node assignment for Pods becomes random. For instance, assume your RDS Writer Instance is running in AZ C, Kubernetes is not able to determine that it should (ideally) schedule your SQL client Pod in AZ C:
 
 ```mermaid
 ---
@@ -43,7 +43,7 @@ flowchart TD
     style RDS fill:#5A30B5,stroke:#333,stroke-width:2px,color:#fff
 ```
 
-By making network topology information available for the scheduler, we can allow it to make informed decissions. The best case for our workload is to be placed in the same AZ as the RDS instance it is communicating with:
+By making network topology information available for the scheduler, we can allow it to make informed decisions. The best case for our workload is to be placed in the same AZ as the RDS instance it is communicating with:
 
 ```mermaid
 graph TD
@@ -85,17 +85,17 @@ graph TD
     style K8sAPI fill:#D92A2A,stroke:#333,stroke-width:2px,color:#fff
 ```
 
-Manually setting a Node Affinity rule in the Pod spec fixes this temporary, but in a multi node RDS cluster, the role of the instance (Reader or Writer) can change over time as a result of maintance events, like patching, instance resizing or similar.
+Manually setting a Node Affinity rule in the Pod spec fixes this temporarily, but in a multi-node RDS cluster, the role of the instance (Reader or Writer) can change over time as a result of maintenance events, like patching, instance resizing, or similar events.
 
 ## Why ?
 
-I was working on a platform team that got rather special support request: "Our application is _slower_ in production, help?". Turned out that that their production workload was (by chance) deployed in another zone than their RDS instance. Apperantly, cross-AZ latency is actually relative large compared to same-zone latency. Hence this solution.
+I was working on a platform team that got a rather special support request: "Our application is _slower_ in production, help?". It turned out that their production workload was (by chance) deployed in another zone than their RDS instance. Apparently, cross-AZ latency is actually relatively large compared to same-zone latency. Hence this solution.
 
 ## How ?
 
-Kubernetes does not have a native solution for this specific issue: "How can I schedule Pods relative near to a resouce it is using, when this resource is outside the context of the cluster, and Kubernetes have no knowledge about this specific resource?".
+Kubernetes does not have a native solution for this specific issue: "How can I schedule Pods relatively near to a resource it is using, when this resource is outside the context of the cluster, and Kubernetes has no knowledge about this specific resource?".
 
-The first step is to provide an API endpoint that is able to determine which zone a particular resource is located in. This endpoints accepts domain names, which it can resolve and map to a specific AWS availbility-zone. We are assuming the Pod has a domain name it uses to reach the external service, e.g, rhe RDS Writer instance FQDN:
+The first step is to provide an API endpoint that is able to determine which zone a particular resource is located in. This endpoint accepts domain names, which it can resolve and map to a specific AWS availability zone. We are assuming the Pod has a domain name it uses to reach the external service, e.g., the RDS Writer instance FQDN:
 
 ```sh
 $ curl --silent localhost:8080/my-rds-instance.cluster-c7eeqk68ktn1.eu-central-1.rds.amazonaws.com | jq
@@ -105,9 +105,9 @@ $ curl --silent localhost:8080/my-rds-instance.cluster-c7eeqk68ktn1.eu-central-1
 }
 ```
 
-The above endpoint is a very simple Python application that has been feed with all relevant subnet information. With this, we can make a mutating webhook in Kubernetes to ensure that Pods using external resources, as deployed to the optimal availbility zone.
+The above endpoint is a very simple Python application that has been fed with all relevant subnet information. With this, we can make a mutating webhook in Kubernetes to ensure that Pods using external resources are deployed to the optimal availability zone.
 
-With this information, one can use a mutating webhook (via e.g. Kyverno a ClusterPolicy) to alter the Pod specification when a Pod is created, and instruct it to attempt to place the Pod in the correct availbility zone, for instance via node affinity rules
+With this information, one can use a mutating webhook (e.g., via a Kyverno ClusterPolicy) to alter the Pod specification when a Pod is created, and instruct it to attempt to place the Pod in the correct availability zone, for instance via node affinity rules.
 
 ## Tell me everything
 
