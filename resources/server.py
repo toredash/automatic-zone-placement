@@ -118,7 +118,7 @@ class RequestHandler(BaseHTTPRequestHandler):
 # --- Server and Shutdown Logic ---
 def run(server_class=HTTPServer, handler_class=RequestHandler):
     """Starts the HTTP server and sets up graceful shutdown."""
-    port = int(os.environ.get("PORT", 8082))
+    port = int(os.environ.get("PORT", 8080))
     server_address = ('', port)
     httpd = server_class(server_address, handler_class)
 
