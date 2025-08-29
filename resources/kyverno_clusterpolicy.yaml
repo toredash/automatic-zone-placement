@@ -1,0 +1,65 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: automatic-zone-placement
+  annotations:
+    policies.kyverno.io/title: Automatic zone placement
+    policies.kyverno.io/category: AWS
+    policies.kyverno.io/subject: Pod
+    kyverno.io/kubernetes-version: "1.12"
+    policies.kyverno.io/description: >-
+      This policy enables automatic zone placement for Pods. If the Pod has an annotation
+      'automatic-zone-placement', it calls an external data source with the value as input. The external
+      data source should return a valid AWS zone in the format '{"zone": "eu-north-1a"}'.
+      The use-case for this policy is to ensure that the Pod is placed in the same zone as the
+      resource it is communicating with. For instance, a Pod that communicates with a database
+      should prefer to be in the same zone as the database to reduce latency.
+spec:
+  failurePolicy: Ignore # Non-critical if the rule is not executed
+  webhookTimeoutSeconds: 2
+  rules:
+  - name: automatic-zone-placement
+    match:
+      all:
+      - resources:
+          kinds:
+          - Pod
+          operations:
+          - CREATE
+          annotations: # Matching on label selector is not used because of the value limit of 63 chars. A DNS name can be longer than 63 chars.
+            automatic-zone-placement: "*"
+    context: # Use the value of the automatic-zone-placement annotations to call the service
+      - name: result
+        apiCall:
+          method: GET
+          service:
+            url: http://automatic-zone-placement:8080/{{ request.object.metadata.annotations."automatic-zone-placement" }}
+    preconditions:
+      all: # Check that the returned data is a valid AWS zone.
+           # Key is 'true' if the regex matches the returned json payload: result.zone. 'false' otherwise
+      - key: "{{ regex_match('^(us|eu|ap|sa|ca|cn|me|af)-(north|south|central|east|west|northeast|southeast|westcentral|southcentral)-[0-9][a-z]$','{{ result.zone }}') }}"
+        operator: Equals
+        value: true
+        message: "Returned zone is not a valid AWS zone: ^(us|eu|ap|sa|ca|cn|me|af)-(north|south|central|east|west|northeast|southeast|westcentral|southcentral)-[0-9][a-z]$"
+    mutate:
+      # Soft-requirement to add the zone to the Pod spec. One could create a "hard" policy that uses requiredDuringSchedulingIgnoredDuringExecution (example provided in the commented-out section below)
+      patchesJson6902: |-
+        - op: add
+          path: "/spec/affinity/nodeAffinity/preferredDuringSchedulingIgnoredDuringExecution/-"
+          value:
+            weight: 100
+            preference:
+              matchExpressions:
+              - key: topology.kubernetes.io/zone
+                operator: In
+                values:
+                - {{ result.zone }}
+        # Example on how to make the placement "hard" by using requiredDuringSchedulingIgnoredDuringExecution
+        # - op: add
+        #   path: "/spec/affinity/nodeAffinity/requiredDuringSchedulingIgnoredDuringExecution/nodeSelectorTerms/-"
+        #   value:
+        #     matchExpressions:
+        #     - key: topology.kubernetes.io/zone
+        #       operator: In
+        #       values:
+        #       - {{ result.zone }}

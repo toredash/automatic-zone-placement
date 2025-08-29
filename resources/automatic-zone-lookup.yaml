@@ -1,0 +1,70 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: automatic-zone-placement
+spec:
+  selector:
+    app: automatic-zone-placement
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: automatic-zone-placement
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: automatic-zone-placement
+  template:
+    metadata:
+      labels:
+        app: automatic-zone-placement
+    spec:
+      # Pod security context: Run all containers as a non-root user and group.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 2001
+      containers:
+      - name: automatic-zone-placement
+        image: python:3-alpine
+        # Container security context: Enforce best practices
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          # Capabilities to drop for enhanced security
+          capabilities:
+            drop:
+              - ALL
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        # Liveness probe to restart the container if the app becomes unresponsive.
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          initialDelaySeconds: 2
+          periodSeconds: 10
+        # Readiness probe to ensure the container only receives traffic when ready.
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: http
+          initialDelaySeconds: 2
+          periodSeconds: 10
+        command: ["python", "-u", "/mnt/server.py"]
+        volumeMounts:
+        - name: script-volume
+          mountPath: /mnt
+      volumes:
+      - name: script-volume
+        configMap:
+          name: automatic-zone-placement
