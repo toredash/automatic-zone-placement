@@ -6,7 +6,7 @@ In Kubernetes, it is not possible to schedule Pods for optimal network performan
 
 This project offers a solution by making Kubernetes-aware of network topology outside the cluster. A lightweight **lookup service** provides an endpoint to resolve an external resource's domain name to an IP address and maps it to a known network zone (like an AWS Availability Zone). This data is used with a mutating webhook to inject node affinity rules into Pods at creation time. This ensures Pods are scheduled in the same zone as the external resources they depend on, optimizing for low-latency communication. The mechanism is generic and works for any external resource, on-prem or in the cloud, as long as its FQDN resolves to a single IP in a known subnet.
 
-This approach can yield significant performance improvements; a simple `pgbench` benchmark demonstrates a ~175% to ~375% improvement in TPS. Any workload that is latency-sensitive can benefit from this.
+This approach can yield significant performance improvements; a simple `pgbench` benchmark demonstrates a ~175% to ~375% improvement in [TPS](https://en.wikipedia.org/wiki/Transactions_per_second). Any workload that is latency-sensitive can benefit from this.
 
 _Note: This is not a fix for placing related workloads running in the same cluster relatively near each other. That is a problem already solved in Kubernetes with affinity rules and smart use of label selectors._
 
